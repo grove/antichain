@@ -40,13 +40,13 @@ fn main() {
 
     for round in 1..=N_ROUNDS {
         // Each worker advances its own progress by a random increment.
-        for i in 0..N_WORKERS {
+        for frontier in frontiers.iter_mut() {
             let advance = rng.next() % 12 + 1; // 1..=12
-            let current = *frontiers[i]
+            let current = *frontier
                 .elements()
                 .first()
                 .expect("frontier is non-empty");
-            frontiers[i] = Frontier::from_elem(current + advance);
+            *frontier = Frontier::from_elem(current + advance);
         }
 
         // Gossip phase: each worker picks a random peer; 30% of messages are dropped.
@@ -92,11 +92,10 @@ fn main() {
     // a final unconditional all-to-all gossip round.
     println!("\n--- Final all-to-all gossip (convergence check) ---");
     let snapshot: Vec<Frontier<u64>> = frontiers.clone();
-    for i in 0..N_WORKERS {
-        for j in 0..N_WORKERS {
+    for (i, frontier) in frontiers.iter_mut().enumerate() {
+        for (j, peer) in snapshot.iter().enumerate() {
             if i != j {
-                let peer = snapshot[j].clone();
-                frontiers[i] = frontiers[i].meet(&peer);
+                *frontier = frontier.meet(peer);
             }
         }
     }
