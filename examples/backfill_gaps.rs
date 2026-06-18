@@ -44,16 +44,16 @@ fn main() {
 
     // Worker 0: fast, starts from the beginning, hits a hole at 300–350.
     let mut w0 = IntervalSetLattice::new();
-    w0.insert(0u64, 300);    // processed blocks 0–299
-    w0.insert(350, 700);     // then jumped ahead; gap at 300–349
+    w0.insert(0u64, 300); // processed blocks 0–299
+    w0.insert(350, 700); // then jumped ahead; gap at 300–349
 
     // Worker 1: slow start, but no gaps.
     let mut w1 = IntervalSetLattice::new();
-    w1.insert(0u64, 600);    // processed blocks 0–599
+    w1.insert(0u64, 600); // processed blocks 0–599
 
     // Worker 2: started in the middle, wrapping back to the start later.
     let mut w2 = IntervalSetLattice::new();
-    w2.insert(200u64, 800);  // processed blocks 200–799
+    w2.insert(200u64, 800); // processed blocks 200–799
 
     print_state("Initial state", &w0, &w1, &w2);
 
@@ -80,10 +80,10 @@ fn main() {
 
     // ── Round 3: workers finish their respective ranges ───────────────────────
     println!("--- All workers cover [0, 1000) ---\n");
-    w0.insert(700u64, 1000);   // w0 now covers [0,300)+[300,350)+[350,700)+[700,1000) = [0,1000)
-    w1.insert(600u64, 1000);   // w1 now covers [0,1000)
-    w2.insert(0u64, 200);      // w2 fills [0,200), join with [200,800)
-    w2.insert(800u64, 1000);   // w2 finishes
+    w0.insert(700u64, 1000); // w0 now covers [0,300)+[300,350)+[350,700)+[700,1000) = [0,1000)
+    w1.insert(600u64, 1000); // w1 now covers [0,1000)
+    w2.insert(0u64, 200); // w2 fills [0,200), join with [200,800)
+    w2.insert(800u64, 1000); // w2 finishes
 
     print_state("Final state", &w0, &w1, &w2);
 
