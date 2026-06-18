@@ -155,6 +155,11 @@ pub struct Cookbook;
 #[doc = include_str!("../docs/tutorial.md")]
 pub struct Tutorial;
 
+// Compile and run every code block in the FAQ as a doctest.
+#[cfg(doctest)]
+#[doc = include_str!("../docs/faq.md")]
+pub struct Faq;
+
 // ── Lattice ───────────────────────────────────────────────────────────────────
 
 /// Greatest lower bound (`meet`) and least upper bound (`join`).

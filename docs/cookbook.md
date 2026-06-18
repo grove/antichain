@@ -7,6 +7,9 @@ This cookbook answers the more practical question:
 
 > **"I have problem X — which type do I reach for, and how do I wire it up?"**
 
+New to the crate or have a more general question? The **[FAQ](faq.md)** answers 100+ questions,
+starting from the very basics.
+
 Every snippet here is a complete, compilable example. If you want the algebraic
 motivation behind the design, read [`idea.md`](idea.md); if you want the formal
 convergence proof, see [`../specs/frontier_convergence.fizz`](../specs/frontier_convergence.fizz).

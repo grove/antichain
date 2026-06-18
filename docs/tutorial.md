@@ -252,6 +252,7 @@ their `Frontier` values to each other and always converge.
 
 ## Where to go next
 
+- **[FAQ](faq.md)** — 100+ questions and answers, from gentle introductions to technical depth.
 - **[Cookbook](cookbook.md)** — decision table and worked recipes for every type.
 - **[API reference](https://docs.rs/antichain)** — full type documentation.
 - **[Runnable examples](../examples/)** — `watermark_gossip.rs` runs a simulated N-node

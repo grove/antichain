@@ -5,6 +5,8 @@
 
 > This document is deliberately about the *idea*. It does not describe what is currently built in RockStream, nor any roadmap. When implementation details creep in, they should be moved elsewhere. Keep this file about the essence.
 
+> Looking for practical questions and answers instead of philosophy? See the **[FAQ](faq.md)**.
+
 ---
 
 ## 1. The essence, in one sentence

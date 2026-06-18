@@ -2,6 +2,9 @@
 
 How `antichain` relates to other crates and designs that address overlapping problems.
 
+> See also the **[FAQ](faq.md)** for the short "how is this different from X?" answers in
+> plain language.
+
 ---
 
 ## timely-dataflow / differential-dataflow

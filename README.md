@@ -170,6 +170,8 @@ universal consistency law `a ≤ b ⟺ meet(a,b)==a ⟺ join(a,b)==b`) is proper
 
 ## Learn more
 
+- **[FAQ](docs/faq.md)** — 100+ plain-language questions and answers, starting gentle for the
+  curious reader and gradually going deeper for engineers and the mathematically minded.
 - **[Tutorial](docs/tutorial.md)** — *"from one number to a frontier,"* a narrative walkthrough
   that builds intuition from scratch before introducing any lattice vocabulary.
 - **[Cookbook](docs/cookbook.md)** — *"which type for which problem,"* with a decision table and a
