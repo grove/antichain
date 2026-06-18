@@ -42,10 +42,7 @@ fn main() {
         // Each worker advances its own progress by a random increment.
         for frontier in frontiers.iter_mut() {
             let advance = rng.next() % 12 + 1; // 1..=12
-            let current = *frontier
-                .elements()
-                .first()
-                .expect("frontier is non-empty");
+            let current = *frontier.elements().first().expect("frontier is non-empty");
             *frontier = Frontier::from_elem(current + advance);
         }
 
