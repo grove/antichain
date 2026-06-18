@@ -263,7 +263,123 @@ strategy rather than a leap of faith.
 
 ---
 
-## 7. Summary: a clean division of labour
+## 7. Pros and cons
+
+The headline advantage of building multi-writer SlateDB on `antichain` and CRDTs is that you
+get *coordination-free correctness*, and almost every other benefit flows from that single
+property. Because the merges are commutative, associative, and idempotent, there is no leader
+to elect for the common path, no consensus round on the critical write path, and no single
+machine that every operation must funnel through — which means write throughput scales with
+the number of writers rather than being pinned to one node, the failure of any one writer
+degrades the system to "slightly stale" rather than "down," and the whole thing runs happily
+over the lossy, out-of-order, eventually-consistent surface that object storage actually
+gives you. A second, quieter advantage is *intellectual economy*: both halves of the problem
+rest on the same lattice algebra, so engineers learn one mental model, the correctness
+arguments rhyme, and the very same property-based and model-checking techniques that already
+guard `antichain`'s convergence apply to the data merge too. A third is *incrementality* —
+SlateDB already assigns sequence numbers, already resolves keys newest-wins, and already has
+a merge-operator API, so much of this is reframing and hardening machinery that exists rather
+than bolting on a foreign subsystem. And because `antichain` is a tiny, dependency-light,
+`no_std`-capable pure data type, adopting it adds essentially no operational surface area: it
+is a library, not a service.
+
+The costs are just as real and should be stated plainly. The most fundamental is that
+coordination-free merging buys *eventual* and *conservative* consistency, not strict
+serializability: the global read frontier is always the floor of every writer's progress, so
+a single slow or partitioned writer holds the entire database's visible boundary back, and
+last-writer-wins resolution silently discards the loser of a concurrent write rather than
+detecting the conflict. Workloads that need atomic multi-key invariants or
+read-your-own-writes across writers will not get them from these primitives alone. A second
+cost is *metadata overhead and its management* — CRDT timestamps, per-writer frontier
+records, and tombstones all consume space and must be bounded and garbage-collected, or they
+will quietly grow without limit. A third is *semantic discipline*: the algebra only protects
+you if every merge function genuinely obeys the lattice laws, so a merge operator that is
+secretly order-dependent, or a timestamp scheme that can collide, reintroduces exactly the
+split-brain the design was meant to prevent — and these bugs are subtle, because they only
+surface under concurrency the tests may not exercise. Finally, the approach leans entirely on
+an *external fencing mechanism* it does not provide; if SlateDB's epoch-and-CAS layer is
+misconfigured, the whole edifice is unsound no matter how elegant the merges are.
+
+---
+
+## 8. Trade-offs
+
+Most of the design decisions here are not "right versus wrong" but *dials* you tune for a
+particular workload, and naming the dials is more useful than pretending there is one correct
+setting. The first and most consequential is **consistency versus availability and latency**.
+Taking the conservative `meet` of every writer's frontier is what lets readers proceed
+without a coordinator, but it ties the global read boundary to the slowest participant, so a
+writer that is merely slow — not dead — drags everyone's visible watermark backward. You can
+tighten this by fencing and evicting laggards aggressively, which restores a fresher frontier
+at the cost of churn and the risk of evicting a writer that was only briefly stalled; or you
+can loosen it by tolerating staleness, which maximises availability but means readers see an
+older view. There is no setting that gives you both a fresh boundary and tolerance of slow
+writers, because that tension is inherent to conservative merging.
+
+A second trade-off is **conflict resolution semantics versus simplicity**. Last-writer-wins is
+trivial to implement, costs one timestamp per value, and is what most key-value workloads
+expect — but it resolves conflicts by *throwing data away*, which is unacceptable for
+counters, sets, or any value where both concurrent updates carry meaning. Richer CRDTs
+(PN-counters, observed-remove sets) preserve that meaning and merge it correctly, but they
+cost more metadata, more code, and more careful reasoning, and they constrain what the value
+*is* allowed to be. The trade-off is between a cheap, lossy, universal default and a richer,
+heavier, type-specific merge; a mature design will offer LWW as the default and richer CRDTs
+opt-in per column family or per merge operator. A third dial is **writer topology**:
+fully-overlapping writers (anyone may write any key) maximise flexibility and load-balancing
+but force genuine concurrent-write conflict resolution on every key, whereas *partitioned*
+writers (each owns a disjoint key range, modelled by `ProductTimestamp` or `MapLattice`)
+sidestep most conflicts entirely at the cost of a partition-assignment mechanism and the risk
+of hotspots when one partition runs hot. A fourth is **gossip versus manifest-mediated
+progress sharing**: pushing frontiers peer-to-peer converges fast and avoids hammering the
+object store, but adds a network path and its own failure modes, while piggybacking frontiers
+on manifest or per-writer object-store records needs no new transport but reacts only as fast
+as your polling interval and costs object-store operations. Each of these is a slider, and the
+right position depends entirely on whether your workload prizes freshness, throughput,
+simplicity, or operational minimalism.
+
+---
+
+## 9. Alternative approaches
+
+It is worth being honest that coordination-free merging is *one* way to do multi-writer, not
+the only way, and for some workloads a different point on the spectrum is the better
+engineering choice. The most conservative alternative is to **keep the single-writer
+invariant and scale around it** — shard the keyspace across many independent single-writer
+SlateDB instances, each the sole writer of its shard, and route each key to its owning
+instance. This keeps every instance trivially correct and linearizable within its shard,
+needs none of the CRDT machinery, and is how a great many production systems actually achieve
+write scale-out; its cost is that cross-shard operations and rebalancing become an
+application concern, and you trade a hard data-merge problem for a routing-and-resharding
+problem. A second alternative is **true consensus**: run a Raft or Paxos group, or lean on an
+external coordination service, so that a quorum agrees on a total order of writes. This buys
+you strict serializability and conflict *detection* rather than lossy resolution, which some
+applications genuinely require — but it reintroduces a coordinator, a leader on the write
+path, and the latency and availability cost of a quorum round, which is precisely the
+overhead an object-storage-native database is usually trying to escape.
+
+A third family of alternatives changes *what* coordinates rather than *whether* it does.
+**Compare-and-swap on a single shared log or manifest** — letting all writers contend on
+optimistic concurrency over a numbered sequence of object-store files, exactly the mechanism
+SlateDB's distributed-compaction RFC already uses for claiming jobs — gives you a serialised
+order without a long-lived leader, at the cost of contention that rises with writer count and
+a retry storm under high concurrency. **Deterministic timestamp ordering via synchronised
+clocks** (a Spanner-style TrueTime or a hybrid logical clock) can provide an external,
+globally consistent order that makes last-writer-wins *meaningful* rather than arbitrary, but
+it leans on clock infrastructure and bounded skew that not every deployment can guarantee. And
+at the far end, a **dedicated sequencer** — one tiny, fast service whose only job is to hand
+out a global order, with everything else scaling freely behind it — concentrates the
+coordination into a single cheap component rather than eliminating it. The honest framing is
+that `antichain` and CRDTs occupy a specific and attractive niche: maximal availability and
+throughput, minimal operational surface, and *eventual* consistency with deterministic
+conflict resolution. If your workload can live within those semantics — and a surprising
+number can — it is hard to beat. If it cannot, the alternatives above trade some of that
+availability or simplicity back for stronger ordering guarantees, and the right design is
+often a *hybrid*: CRDT-and-frontier merging for the bulk of the data, with a narrow consensus
+or CAS path reserved for the few operations that genuinely need a total order.
+
+---
+
+## 10. Summary: a clean division of labour
 
 The cleanest way to hold all of this in your head is as a division of labour between three
 layers, each doing the one thing it is good at. At the bottom, object storage plus SlateDB's
