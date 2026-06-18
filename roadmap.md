@@ -16,7 +16,8 @@
 | 2 | Law proofs | All algebraic laws property-tested | No `proptest` failures under 10 000 cases |
 | 3 | Composition | Product, lexicographic, nested orders | Composed frontiers work correctly |
 | 4 | Hardening | Benchmarks, fuzzing, docs, `#![no_std]` compat | Crate is publishable |
-| 5 | Integrations | Adapter crates for RockStream / SlateDB | Separate crates, no core contamination |
+| 5 | Formal specification | TLA⁺ or Lean proof of convergence | Spec written, convergence proven |
+| 6 | Extended composition patterns | Additional useful partial orders | `Max<T>`, `Min<T>`, `Bounded<T>` working |
 
 ---
 
@@ -249,8 +250,57 @@ From `idea.md` §8, mapped to phases:
 |----------|-------|--------|
 | Minimal trait contract for `T` | 2 | Property tests reveal the exact required laws |
 | Frontier size explosion in high-D | 3 | Benchmark + compaction step if needed |
-| Formal convergence invariant | 4 | State as a rustdoc invariant; consider TLA⁺ or Lean spec as stretch |
-| Clean seam: progress vs. ownership | 5 | Adapter crate boundaries enforce it structurally |
+| Formal convergence invariant | 5 | TLA⁺ or Lean proof of convergence guarantee |
+
+---
+
+## Phase 5 — Formal specification
+
+**Goal:** prove the convergence guarantee with mathematical certainty.
+
+- [ ] Write a TLA⁺ spec or Lean proof of the core convergence theorem
+- [ ] Specify the exact invariants that `meet` preserves under arbitrary message reordering
+- [ ] Document the formal statement: *"If two nodes have each observed any subset of the same update set, in any order, their `Frontier` values will be identical after merging."*
+- [ ] Validate the spec against the property tests from Phase 2
+- [ ] Ship as v0.2.0 with formal correctness guarantee
+
+**Why this matters:** For systems where correctness is critical (financial streaming, audit logs, replication), a formal proof gives confidence beyond empirical testing.
+
+---
+
+## Phase 6 — Extended composition patterns
+
+**Goal:** add useful partial orders for real-world use-cases.
+
+### 6.1 `Max<T>` and `Min<T>` wrappers
+
+Wrappers that flip the partial order of any type without requiring a custom `Lattice` impl:
+
+```rust
+/// Inverts PartialOrd: a ≤ b in Max iff b ≤ a in T.
+pub struct Max<T>(pub T);
+
+/// Keeps PartialOrd as-is but provides Max semantics for meet/join.
+pub struct Min<T>(pub T);
+```
+
+Used for tracking "at least X" vs. "at most Y" bounds in the same frontier.
+
+### 6.2 `Bounded<T>`
+
+A newtype for finite ranges where the partial order is restricted to a known interval `[min, max]`.
+Enables bounded-width antichain guarantees: if `T` is bounded, the antichain width is provably ≤ the cardinality of the bound.
+
+```rust
+pub struct Bounded<T> { value: T, min: T, max: T }
+```
+
+### 6.3 Nested composition examples
+
+Document patterns like:
+- `Frontier<ProductTimestamp<Bounded<u64>, u64>>` — bounded outer clock, unbounded inner
+- `Frontier<(Max<u64>, Min<u64>)>` — independent lower and upper bounds
+- Integration with the formal spec: prove that nesting preserves the convergence guarantee
 
 ---
 
