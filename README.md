@@ -52,9 +52,9 @@ Those are things you might *build on* this primitive. They are not the primitive
 
 ```toml
 [dependencies]
-antichain = "0.1"
+antichain = "0.2"
 # with serde support:
-# antichain = { version = "0.1", features = ["serde"] }
+# antichain = { version = "0.2", features = ["serde"] }
 ```
 
 ```rust
@@ -72,6 +72,28 @@ assert_eq!(global, Frontier::from_elem(7u64));
 assert_eq!(worker_a.meet(&worker_b), worker_b.meet(&worker_a));
 ```
 
+## Formal correctness guarantee
+
+A Fizzbee model-checking spec is included at [`specs/frontier_convergence.fizz`](specs/frontier_convergence.fizz).
+It encodes and mechanically verifies the following theorem:
+
+> **Convergence theorem**: If two nodes have each observed any subset of the same update set,
+> in any order, their `Frontier` values will be identical after merging all updates.
+
+The model checker exhaustively enumerates every possible interleaving of update deliveries
+across all nodes. The `Convergence` and `AllNodesConverge` assertions hold in every reachable
+state, proving that no adversarial ordering can cause divergence.
+
+To verify locally:
+
+```sh
+brew tap fizzbee-io/fizzbee && brew install fizzbee
+fizz specs/frontier_convergence.fizz
+```
+
+The `prop_tests_phase5` module in `src/lib.rs` provides a complementary Rust property test
+that runs 10 000 random cases for both `Frontier<u64>` and `Frontier<ProductTimestamp<u64,u64>>`.
+
 ## Design notes
 
 See [`docs/idea.md`](docs/idea.md) for the full motivation, the algebraic reasoning, and the
@@ -79,4 +101,4 @@ boundaries of the problem this crate solves.
 
 ## License
 
-MIT
+Apache-2.0

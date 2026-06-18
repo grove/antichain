@@ -1174,3 +1174,86 @@ mod prop_tests_phase3 {
         }
     }
 }
+
+// ── Phase 5: convergence property tests ───────────────────────────────────────
+//
+// These tests directly validate the formal convergence guarantee stated in
+// specs/frontier_convergence.fizz:
+//
+//   "If two nodes have each observed any subset of the same update set, in any
+//    order, their Frontier values will be identical after merging all updates."
+//
+// The property holds because meet is commutative, associative, and idempotent
+// (proven by the Phase 2 tests). These tests lift that per-operation proof to
+// the system level: any sequence of `from_elem` + `meet` calls over the same
+// multiset of values converges to the same Frontier, regardless of order.
+
+#[cfg(test)]
+mod prop_tests_phase5 {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(10_000))]
+
+        /// Convergence for Frontier<u64>: applying the same pool of u64 updates
+        /// in forward, reverse, and sorted order all yield the same Frontier.
+        #[test]
+        fn prop_convergence_order_independence_u64(
+            updates in prop::collection::vec(any::<u64>(), 1..20)
+        ) {
+            // Node A: forward order.
+            let node_a = updates.iter().copied().fold(
+                Frontier::<u64>::bottom(),
+                |acc, u| acc.meet(&Frontier::from_elem(u)),
+            );
+            // Node B: reverse order.
+            let node_b = updates.iter().rev().copied().fold(
+                Frontier::<u64>::bottom(),
+                |acc, u| acc.meet(&Frontier::from_elem(u)),
+            );
+            // Node C: sorted ascending (a deterministic third permutation).
+            let mut sorted = updates.clone();
+            sorted.sort_unstable();
+            let node_c = sorted.iter().copied().fold(
+                Frontier::<u64>::bottom(),
+                |acc, u| acc.meet(&Frontier::from_elem(u)),
+            );
+            prop_assert_eq!(node_a, node_b.clone());
+            prop_assert_eq!(node_b, node_c);
+        }
+
+        /// Convergence for Frontier<ProductTimestamp<u64,u64>>: the non-trivial case
+        /// where the antichain can hold multiple mutually incomparable elements and
+        /// the order of update delivery makes the test genuinely interesting.
+        #[test]
+        fn prop_convergence_order_independence_product(
+            raw in prop::collection::vec((any::<u64>(), any::<u64>()), 1..20)
+        ) {
+            let updates: Vec<_> =
+                raw.iter().map(|&(a, b)| ProductTimestamp::new(a, b)).collect();
+
+            // Node A: forward.
+            let node_a = updates.iter().cloned().fold(
+                Frontier::<ProductTimestamp<u64, u64>>::bottom(),
+                |acc, u| acc.meet(&Frontier::from_elem(u)),
+            );
+            // Node B: reverse.
+            let node_b = updates.iter().rev().cloned().fold(
+                Frontier::<ProductTimestamp<u64, u64>>::bottom(),
+                |acc, u| acc.meet(&Frontier::from_elem(u)),
+            );
+            // Node C: sorted by (outer, inner) — a deterministic total order.
+            let mut sorted = updates.clone();
+            sorted.sort_unstable_by(|a, b| {
+                a.outer.cmp(&b.outer).then(a.inner.cmp(&b.inner))
+            });
+            let node_c = sorted.iter().cloned().fold(
+                Frontier::<ProductTimestamp<u64, u64>>::bottom(),
+                |acc, u| acc.meet(&Frontier::from_elem(u)),
+            );
+            prop_assert_eq!(node_a, node_b.clone());
+            prop_assert_eq!(node_b, node_c);
+        }
+    }
+}

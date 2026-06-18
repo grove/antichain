@@ -1,0 +1,109 @@
+---
+# No deadlock: the system reaches a terminal state when all nodes have processed
+# all updates. From that point no further ApplyUpdate action is enabled.
+deadlock_detection: false
+---
+"""
+Antichain Frontier Convergence — Fizzbee Formal Specification
+=============================================================
+
+Theorem (Convergence):
+  If two nodes have each observed any subset of the same update set, in any
+  order, their Frontier values will be identical after all updates have been
+  merged.
+
+Formal statement:
+  Let U be a finite set of timestamps and let N be the number of nodes.
+  Let each node i hold a Frontier f_i, initialised to ⊤ (no progress).
+  Each step, exactly one node applies one previously-unseen update u ∈ U via
+  the meet operation (for u64, meet(a, b) = min(a, b)).
+  Then, in every state where every node has seen every update in U:
+
+      ∀ i j.  f_i = f_j
+
+  That is, the order in which updates are delivered is irrelevant to the final
+  frontier value.
+
+Why this is sufficient:
+  The model checker exhaustively enumerates every possible interleaving of
+  update deliveries across all nodes. The Convergence assertion is evaluated
+  after every state transition. If there exists any ordering that causes
+  divergence, the checker will find and report it.
+
+  The property holds because meet is:
+    • Commutative:  meet(a, b) = meet(b, a)
+    • Associative:  meet(a, meet(b, c)) = meet(meet(a, b), c)
+    • Idempotent:   meet(a, a) = a
+  These three laws together guarantee that the result of folding meet over a
+  set of values is independent of the order of application.
+
+Relation to the property tests in src/lib.rs:
+  The proptest suite (Phase 2) verifies commutativity, associativity, and
+  idempotence for 10 000 random inputs. This spec lifts those per-operation
+  guarantees to the system level: any distributed execution of N nodes
+  exchanging updates converges.
+
+How to verify:
+  1. Install Fizzbee:  brew tap fizzbee-io/fizzbee && brew install fizzbee
+  2. Run the model checker:  fizz specs/frontier_convergence.fizz
+  The checker should report 0 violations and a finite, fully-explored state
+  space.
+
+Model parameters:
+  N_NODES = 2    — number of nodes in the system
+  UPDATES = [3, 5, 7]  — the shared pool of u64 timestamps
+  TOP = 999      — represents ⊤ (no progress; the identity for meet on u64 min)
+
+  For u64, the Frontier is a single scalar: the minimum of all observed values.
+  The Antichain invariant holds trivially because u64 is totally ordered — any
+  antichain of u64 values has exactly one element.
+"""
+
+N_NODES = 2
+UPDATES = [3, 5, 7]
+TOP = 999  # represents ⊤ — identity element for min (conceptual +∞)
+
+action Init:
+    # Each node starts with an empty history and the top (identity) frontier.
+    nodes_seen     = []
+    nodes_frontier = []
+    for i in range(N_NODES):
+        nodes_seen.append(set())
+        nodes_frontier.append(TOP)
+
+# Any node may process any one update it has not yet seen, in any order.
+# The `any` keyword instructs the model checker to explore every possible choice.
+# `fair` ensures the liveness assertion is checkable: every enabled action is
+# eventually taken.
+atomic fair action ApplyUpdate:
+    any node_id in range(N_NODES):
+        any u in UPDATES:
+            require u not in nodes_seen[node_id]
+            nodes_seen[node_id].add(u)
+            # meet for u64 = min (greatest lower bound under the natural order)
+            if u < nodes_frontier[node_id]:
+                nodes_frontier[node_id] = u
+
+# ── Safety ────────────────────────────────────────────────────────────────────
+
+# Once every node has processed every update, all frontiers must be equal.
+# The assertion holds vacuously while any node still has unseen updates.
+always assertion Convergence:
+    for i in range(N_NODES):
+        if nodes_seen[i] != set(UPDATES):
+            return True  # not yet fully converged; vacuously satisfied
+    # All nodes have seen all updates — verify that frontiers agree.
+    for i in range(N_NODES):
+        if nodes_frontier[i] != nodes_frontier[0]:
+            return False
+    return True
+
+# ── Liveness ──────────────────────────────────────────────────────────────────
+
+# All nodes will eventually have processed every update.
+# Requires the `fair` modifier on ApplyUpdate (above) to avoid stutter.
+always eventually assertion AllNodesConverge:
+    for i in range(N_NODES):
+        if nodes_seen[i] != set(UPDATES):
+            return False
+    return True

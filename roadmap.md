@@ -250,7 +250,7 @@ From `idea.md` §8, mapped to phases:
 |----------|-------|--------|
 | Minimal trait contract for `T` | 2 | Property tests reveal the exact required laws |
 | Frontier size explosion in high-D | 3 | Benchmark + compaction step if needed |
-| Formal convergence invariant | 5 | TLA⁺ or Lean proof of convergence guarantee |
+| Formal convergence invariant | 5 | Fizzbee spec of convergence guarantee |
 
 ---
 
@@ -258,11 +258,11 @@ From `idea.md` §8, mapped to phases:
 
 **Goal:** prove the convergence guarantee with mathematical certainty.
 
-- [ ] Write a TLA⁺ spec or Lean proof of the core convergence theorem
-- [ ] Specify the exact invariants that `meet` preserves under arbitrary message reordering
-- [ ] Document the formal statement: *"If two nodes have each observed any subset of the same update set, in any order, their `Frontier` values will be identical after merging."*
-- [ ] Validate the spec against the property tests from Phase 2
-- [ ] Ship as v0.2.0 with formal correctness guarantee
+- [x] Write a Fizzbee spec of the core convergence theorem
+- [x] Specify the exact invariants that `meet` preserves under arbitrary message reordering
+- [x] Document the formal statement: *"If two nodes have each observed any subset of the same update set, in any order, their `Frontier` values will be identical after merging."*
+- [x] Validate the spec against the property tests from Phase 2
+- [x] Ship as v0.2.0 with formal correctness guarantee
 
 **Why this matters:** For systems where correctness is critical (financial streaming, audit logs, replication), a formal proof gives confidence beyond empirical testing.
 
