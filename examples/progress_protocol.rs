@@ -46,9 +46,10 @@ fn worker_advance(seq: SeqNo) -> SeqNo {
 /// `MapLattice::meet` (key-intersection + value-meet) gives the most conservative
 /// progress across only the workers both observers have seen — ideal for the
 /// "all-acknowledged" semantics. `join` (key-union + value-join) merges partial views.
-fn shard_join(a: &MapLattice<WorkerId, SeqNo>, b: &MapLattice<WorkerId, SeqNo>)
-    -> MapLattice<WorkerId, SeqNo>
-{
+fn shard_join(
+    a: &MapLattice<WorkerId, SeqNo>,
+    b: &MapLattice<WorkerId, SeqNo>,
+) -> MapLattice<WorkerId, SeqNo> {
     a.join(b)
 }
 
@@ -118,20 +119,25 @@ fn main() {
         acc.meet(&Frontier::from_elem(u))
     });
     assert_eq!(observer_a, observer_b, "convergence: order independent");
-    println!("Convergence verified: both observers → {:?}", observer_a.elements());
+    println!(
+        "Convergence verified: both observers → {:?}",
+        observer_a.elements()
+    );
 
     // ── WithBottom: 'shard not yet started' sentinel ──────────────────────────
 
     // A shard that has not reported yet is modeled with WithBottom::Bottom
     // instead of a magic constant like u64::MAX or 0.
-    let not_started: Frontier<WithBottom<SeqNo>> =
-        Frontier::from_elem(WithBottom::Bottom);
-    let started: Frontier<WithBottom<SeqNo>> =
-        Frontier::from_elem(WithBottom::Value(50));
+    let not_started: Frontier<WithBottom<SeqNo>> = Frontier::from_elem(WithBottom::Bottom);
+    let started: Frontier<WithBottom<SeqNo>> = Frontier::from_elem(WithBottom::Value(50));
 
     // Meet with a not-started shard is conservatively Bottom.
     let merged = not_started.meet(&started);
-    assert_eq!(merged.elements(), &[WithBottom::Bottom], "not-started absorbs meet");
+    assert_eq!(
+        merged.elements(),
+        &[WithBottom::Bottom],
+        "not-started absorbs meet"
+    );
     println!("WithBottom sentinel: not_started.meet(started) = Bottom ✓");
 
     // ── MapLattice: partial-view merge ────────────────────────────────────────
@@ -145,7 +151,10 @@ fn main() {
     let unified = view_a.join(&view_b);
     let global = cluster_frontier(&unified); // min(80, 95) = 80
     assert_eq!(global.elements(), &[80u64], "unified cluster");
-    println!("Unified cluster (partial views merged): {:?}", global.elements());
+    println!(
+        "Unified cluster (partial views merged): {:?}",
+        global.elements()
+    );
 
     // ── Summary ───────────────────────────────────────────────────────────────
 

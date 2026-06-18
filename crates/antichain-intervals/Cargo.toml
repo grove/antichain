@@ -1,0 +1,22 @@
+[package]
+name = "antichain-intervals"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Disjoint-interval-set lattice for tracking out-of-order progress with gaps, built on the antichain crate."
+license = "Apache-2.0"
+repository = "https://github.com/trickle-labs/antichain"
+keywords = ["distributed", "progress", "interval", "lattice", "antichain"]
+categories = ["data-structures", "algorithms"]
+
+[dependencies]
+antichain = { path = "../..", version = "0.3", default-features = false }
+serde = { version = "1", optional = true, default-features = false, features = ["derive", "alloc"] }
+
+[dev-dependencies]
+proptest = "1"
+
+[features]
+default = ["std"]
+std = ["antichain/std"]
+serde = ["dep:serde"]

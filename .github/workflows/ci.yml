@@ -37,17 +37,58 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: cargo clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: cargo test
-        run: cargo test --all-features
+        run: cargo test --workspace --all-features
 
       - name: cargo test (no default features)
         run: cargo test --no-default-features
 
+  no_std:
+    name: Build no_std (alloc only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build core (no_std)
+        run: cargo build -p antichain --no-default-features
+
+      - name: Build core (no_std + serde)
+        run: cargo build -p antichain --no-default-features --features serde
+
+      - name: Build intervals (no_std)
+        run: cargo build -p antichain-intervals --no-default-features
+
+  msrv:
+    name: Minimum supported Rust version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust 1.85 (MSRV)
+        uses: dtolnay/rust-toolchain@1.85.0
+
+      - name: cargo check (MSRV)
+        run: cargo check --workspace --all-features
+
+  semver:
+    name: Semver compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check semver
+        uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          package: antichain
+
   publish:
     name: Publish to crates.io
-    needs: check
+    needs: [check, no_std, msrv]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:

@@ -65,6 +65,30 @@ fn bench_frontier_meet_u64(c: &mut Criterion) {
     group.finish();
 }
 
+// ── Width-1 churn — measures the inline-storage allocation-free fast path ─────
+//
+// The dominant real-world pattern: huge numbers of transient `Frontier<u64>`
+// values created and merged. Because `u64` is totally ordered, each antichain
+// stays at width 1 and (with inline storage) never touches the heap. This
+// benchmark builds and folds a stream of single-element frontiers, the case the
+// `Inline::One` storage path is designed to keep allocation-free.
+
+fn bench_frontier_u64_churn(c: &mut Criterion) {
+    let mut group = c.benchmark_group("frontier_u64_churn");
+    for count in [100u64, 1000, 10_000] {
+        group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, &n| {
+            b.iter(|| {
+                let mut acc = Frontier::<u64>::bottom();
+                for i in 0..n {
+                    acc = acc.meet(&Frontier::from_elem(n - i));
+                }
+                acc
+            });
+        });
+    }
+    group.finish();
+}
+
 // ── Antichain::less_equal (dominates check) — O(n) scan ──────────────────────
 //
 // Measures the hot-path query: "is this timestamp still in-flight?"
@@ -93,6 +117,7 @@ criterion_group!(
     bench_antichain_insert_product,
     bench_frontier_meet_wide,
     bench_frontier_meet_u64,
+    bench_frontier_u64_churn,
     bench_antichain_dominates,
 );
 criterion_main!(benches);
