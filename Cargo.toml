@@ -1,10 +1,10 @@
 [package]
 name = "antichain"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "A coordinator-free primitive for tracking distributed progress using lattice algebra."
 license = "MIT"
-repository = "https://github.com/geir-gronmo/antichain"
+repository = "https://github.com/trickle-labs/antichain"
 keywords = ["distributed", "progress", "frontier", "lattice", "antichain"]
 categories = ["data-structures", "algorithms"]
 

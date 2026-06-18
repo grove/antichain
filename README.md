@@ -4,7 +4,7 @@ A coordinator-free primitive for tracking distributed progress using lattice alg
 
 > **Scope:** progress tracking only. No ownership, no membership, no consensus.
 
-[![CI](https://github.com/geir-gronmo/antichain/actions/workflows/ci.yml/badge.svg)](https://github.com/geir-gronmo/antichain/actions/workflows/ci.yml)
+[![CI](https://github.com/trickle-labs/antichain/actions/workflows/ci.yml/badge.svg)](https://github.com/trickle-labs/antichain/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/antichain.svg)](https://crates.io/crates/antichain)
 [![docs.rs](https://docs.rs/antichain/badge.svg)](https://docs.rs/antichain)
 
