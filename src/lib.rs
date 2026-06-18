@@ -25,17 +25,166 @@ macro_rules! impl_lattice_ord {
 
 impl_lattice_ord!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
 
+// ── Lattice for 2-tuples ──────────────────────────────────────────────────────
+
+/// Component-wise `Lattice` for 2-tuples.
+///
+/// Note: standard-library tuples use *lexicographic* `PartialOrd`, so these
+/// component-wise meet/join operations are not the greatest lower bound /
+/// least upper bound under that ordering. For true product-order semantics use
+/// [`ProductTimestamp`] instead. This impl is a lightweight convenience for
+/// cases like `(partition, offset)` where component-wise advancement is the
+/// desired behaviour; the bound invariants `meet(a,b) ≤ a` and `a ≤ join(a,b)`
+/// are still satisfied under the lexicographic `PartialOrd`.
+impl<A: Lattice + Clone, B: Lattice + Clone> Lattice for (A, B) {
+    #[inline]
+    fn meet(&self, other: &Self) -> Self {
+        (self.0.meet(&other.0), self.1.meet(&other.1))
+    }
+    #[inline]
+    fn join(&self, other: &Self) -> Self {
+        (self.0.join(&other.0), self.1.join(&other.1))
+    }
+}
+
+// ── ProductTimestamp ──────────────────────────────────────────────────────────
+
+/// A pair timestamp with the *product order*: `(a1, b1) ≤ (a2, b2)` iff
+/// `a1 ≤ a2` **and** `b1 ≤ b2`.
+///
+/// This differs from the standard-library tuple `PartialOrd`, which is
+/// lexicographic. Use this type when you need component-wise incomparability
+/// (e.g., independent partition offsets or multi-dimensional clocks).
+///
+/// Elements that are neither `≤` nor `≥` each other are *incomparable*;
+/// `partial_cmp` returns `None` for them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ProductTimestamp<T1, T2> {
+    pub outer: T1,
+    pub inner: T2,
+}
+
+impl<T1, T2> ProductTimestamp<T1, T2> {
+    /// Creates a new `ProductTimestamp`.
+    pub fn new(outer: T1, inner: T2) -> Self {
+        Self { outer, inner }
+    }
+}
+
+impl<T1: PartialOrd, T2: PartialOrd> PartialOrd for ProductTimestamp<T1, T2> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        use std::cmp::Ordering::{Equal, Greater, Less};
+        match (
+            self.outer.partial_cmp(&other.outer),
+            self.inner.partial_cmp(&other.inner),
+        ) {
+            (Some(Less), Some(Less | Equal)) | (Some(Equal), Some(Less)) => Some(Less),
+            (Some(Equal), Some(Equal)) => Some(Equal),
+            (Some(Greater), Some(Greater | Equal)) | (Some(Equal), Some(Greater)) => {
+                Some(Greater)
+            }
+            _ => None, // incomparable
+        }
+    }
+}
+
+impl<T1: Lattice + Clone, T2: Lattice + Clone> Lattice for ProductTimestamp<T1, T2> {
+    /// Component-wise meet: `(meet(a1,b1), meet(a2,b2))`.
+    fn meet(&self, other: &Self) -> Self {
+        ProductTimestamp {
+            outer: self.outer.meet(&other.outer),
+            inner: self.inner.meet(&other.inner),
+        }
+    }
+    /// Component-wise join: `(join(a1,b1), join(a2,b2))`.
+    fn join(&self, other: &Self) -> Self {
+        ProductTimestamp {
+            outer: self.outer.join(&other.outer),
+            inner: self.inner.join(&other.inner),
+        }
+    }
+}
+
+// ── Lexicographic ─────────────────────────────────────────────────────────────
+
+/// A pair timestamp with *lexicographic* order: the outer dimension totally
+/// orders; the inner dimension breaks ties.
+///
+/// Requires `A: Ord` so that outer comparisons are always decisive.
+/// Typical use: `Lexicographic<EpochId, Offset>` where the epoch totally
+/// dominates and the offset provides sub-epoch ordering.
+///
+/// The `Lattice` impl computes the true greatest lower bound / least upper
+/// bound under this order.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Lexicographic<A, B> {
+    pub outer: A,
+    pub inner: B,
+}
+
+impl<A, B> Lexicographic<A, B> {
+    /// Creates a new `Lexicographic` timestamp.
+    pub fn new(outer: A, inner: B) -> Self {
+        Self { outer, inner }
+    }
+}
+
+impl<A: Ord, B: PartialOrd> PartialOrd for Lexicographic<A, B> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.outer.cmp(&other.outer) {
+            std::cmp::Ordering::Equal => self.inner.partial_cmp(&other.inner),
+            ord => Some(ord),
+        }
+    }
+}
+
+impl<A: Ord + Clone, B: Lattice + Clone> Lattice for Lexicographic<A, B> {
+    fn meet(&self, other: &Self) -> Self {
+        match self.outer.cmp(&other.outer) {
+            std::cmp::Ordering::Less => self.clone(),
+            std::cmp::Ordering::Greater => other.clone(),
+            std::cmp::Ordering::Equal => Lexicographic {
+                outer: self.outer.clone(),
+                inner: self.inner.meet(&other.inner),
+            },
+        }
+    }
+    fn join(&self, other: &Self) -> Self {
+        match self.outer.cmp(&other.outer) {
+            std::cmp::Ordering::Less => other.clone(),
+            std::cmp::Ordering::Greater => self.clone(),
+            std::cmp::Ordering::Equal => Lexicographic {
+                outer: self.outer.clone(),
+                inner: self.inner.join(&other.inner),
+            },
+        }
+    }
+}
+
 // ── Antichain ─────────────────────────────────────────────────────────────────
 
 /// A set of mutually incomparable elements under `PartialOrd`.
 ///
 /// Invariant: no element `x` in the set satisfies `x <= y` or `y <= x`
 /// for any other element `y` in the set.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Antichain<T> {
     elements: Vec<T>,
 }
+
+/// Two antichains are equal when they contain the same *set* of elements,
+/// regardless of insertion order.
+impl<T: PartialEq> PartialEq for Antichain<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.elements.len() == other.elements.len()
+            && self.elements.iter().all(|e| other.elements.contains(e))
+    }
+}
+
+impl<T: Eq> Eq for Antichain<T> {}
 
 impl<T: PartialOrd + Clone> Antichain<T> {
     /// Creates an empty antichain.
@@ -319,6 +468,143 @@ mod tests {
         assert_eq!((-3i64).meet(&-7), -7);
         assert_eq!((-3i64).join(&-7), -3);
     }
+
+    // ── Tuple Lattice ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn tuple_lattice_meet_is_component_wise() {
+        let a = (3u64, 7u64);
+        let b = (5u64, 2u64);
+        assert_eq!(a.meet(&b), (3u64, 2u64));
+    }
+
+    #[test]
+    fn tuple_lattice_join_is_component_wise() {
+        let a = (3u64, 7u64);
+        let b = (5u64, 2u64);
+        assert_eq!(a.join(&b), (5u64, 7u64));
+    }
+
+    // ── ProductTimestamp ──────────────────────────────────────────────────────
+
+    #[test]
+    fn product_order_less() {
+        let a = ProductTimestamp::new(1u64, 2u64);
+        let b = ProductTimestamp::new(3u64, 4u64);
+        assert!(a < b);
+        assert!(b > a);
+    }
+
+    #[test]
+    fn product_order_equal() {
+        let a = ProductTimestamp::new(3u64, 5u64);
+        let b = ProductTimestamp::new(3u64, 5u64);
+        assert_eq!(a.partial_cmp(&b), Some(std::cmp::Ordering::Equal));
+    }
+
+    #[test]
+    fn product_order_incomparable() {
+        let a = ProductTimestamp::new(1u64, 4u64);
+        let b = ProductTimestamp::new(3u64, 2u64);
+        assert_eq!(a.partial_cmp(&b), None);
+    }
+
+    #[test]
+    fn product_timestamp_meet_is_component_wise() {
+        let a = ProductTimestamp::new(3u64, 7u64);
+        let b = ProductTimestamp::new(5u64, 2u64);
+        assert_eq!(a.meet(&b), ProductTimestamp::new(3u64, 2u64));
+    }
+
+    #[test]
+    fn product_timestamp_join_is_component_wise() {
+        let a = ProductTimestamp::new(3u64, 7u64);
+        let b = ProductTimestamp::new(5u64, 2u64);
+        assert_eq!(a.join(&b), ProductTimestamp::new(5u64, 7u64));
+    }
+
+    #[test]
+    fn frontier_product_timestamp_incomparable_elements_both_kept() {
+        // (1,3) and (3,1) are incomparable in product order
+        let f = Frontier::from_elements([
+            ProductTimestamp::new(1u64, 3u64),
+            ProductTimestamp::new(3u64, 1u64),
+        ]);
+        assert_eq!(f.elements().len(), 2);
+    }
+
+    #[test]
+    fn frontier_product_timestamp_dominated_element_removed() {
+        // (1,1) <= (3,3), so (3,3) is dominated
+        let f = Frontier::from_elements([
+            ProductTimestamp::new(1u64, 1u64),
+            ProductTimestamp::new(3u64, 3u64),
+        ]);
+        assert_eq!(f.elements(), &[ProductTimestamp::new(1u64, 1u64)]);
+    }
+
+    #[test]
+    fn frontier_product_meet_merges_incomparable() {
+        let f1 = Frontier::from_elem(ProductTimestamp::new(5u64, 1u64));
+        let f2 = Frontier::from_elem(ProductTimestamp::new(1u64, 5u64));
+        let m = f1.meet(&f2);
+        assert_eq!(m.elements().len(), 2);
+    }
+
+    #[test]
+    fn frontier_product_join_takes_component_max() {
+        let f1 = Frontier::from_elem(ProductTimestamp::new(3u64, 7u64));
+        let f2 = Frontier::from_elem(ProductTimestamp::new(5u64, 2u64));
+        let j = f1.join(&f2);
+        // join(e1, e2) = (5, 7), a single element
+        assert_eq!(j.elements(), &[ProductTimestamp::new(5u64, 7u64)]);
+    }
+
+    // ── Lexicographic ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn lexicographic_outer_dominates() {
+        let a = Lexicographic::new(1u64, 99u64);
+        let b = Lexicographic::new(2u64, 0u64);
+        assert!(a < b);
+    }
+
+    #[test]
+    fn lexicographic_inner_breaks_tie() {
+        let a = Lexicographic::new(5u64, 3u64);
+        let b = Lexicographic::new(5u64, 7u64);
+        assert!(a < b);
+    }
+
+    #[test]
+    fn lexicographic_meet_returns_lesser_when_outer_differs() {
+        let a = Lexicographic::new(1u64, 99u64);
+        let b = Lexicographic::new(2u64, 0u64);
+        assert_eq!(a.meet(&b), a);
+        assert_eq!(b.meet(&a), a);
+    }
+
+    #[test]
+    fn lexicographic_meet_with_equal_outer_uses_inner_meet() {
+        let a = Lexicographic::new(5u64, 3u64);
+        let b = Lexicographic::new(5u64, 7u64);
+        assert_eq!(a.meet(&b), Lexicographic::new(5u64, 3u64));
+    }
+
+    #[test]
+    fn lexicographic_join_returns_greater_when_outer_differs() {
+        let a = Lexicographic::new(1u64, 99u64);
+        let b = Lexicographic::new(2u64, 0u64);
+        assert_eq!(a.join(&b), b);
+        assert_eq!(b.join(&a), b);
+    }
+
+    #[test]
+    fn lexicographic_join_with_equal_outer_uses_inner_join() {
+        let a = Lexicographic::new(5u64, 3u64);
+        let b = Lexicographic::new(5u64, 7u64);
+        assert_eq!(a.join(&b), Lexicographic::new(5u64, 7u64));
+    }
 }
 
 // ── Phase 2: property tests — algebraic law proofs ────────────────────────────
@@ -524,6 +810,247 @@ mod prop_tests {
             let mut ac = Antichain::<(u64, u64)>::empty();
             for &e in m.elements() { ac.insert(e); }
             prop_assert!(antichain_valid(&ac));
+        }
+    }
+}
+
+// ── Phase 3: property tests — composition types ───────────────────────────────
+
+#[cfg(test)]
+mod prop_tests_phase3 {
+    use super::*;
+    use proptest::prelude::*;
+
+    fn antichain_valid<T: PartialOrd + Clone>(a: &Antichain<T>) -> bool {
+        let els = a.elements();
+        for (i, x) in els.iter().enumerate() {
+            for (j, y) in els.iter().enumerate() {
+                if i != j && x <= y {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    prop_compose! {
+        fn arb_frontier_product()(
+            elems in prop::collection::vec((any::<u64>(), any::<u64>()), 0..10)
+        ) -> Frontier<ProductTimestamp<u64, u64>> {
+            Frontier::from_elements(elems.into_iter().map(|(a, b)| ProductTimestamp::new(a, b)))
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(10_000))]
+
+        // ── ProductTimestamp: order laws ──────────────────────────────────────
+
+        /// Reflexivity of product order.
+        #[test]
+        fn prop_product_order_reflexive(x in any::<u64>(), y in any::<u64>()) {
+            let p = ProductTimestamp::new(x, y);
+            prop_assert!(p <= p);
+        }
+
+        /// Antisymmetry: if `a ≤ b` and `b ≤ a` then `a == b`.
+        #[test]
+        fn prop_product_order_antisymmetric(
+            x1 in any::<u64>(), y1 in any::<u64>(),
+            x2 in any::<u64>(), y2 in any::<u64>()
+        ) {
+            let a = ProductTimestamp::new(x1, y1);
+            let b = ProductTimestamp::new(x2, y2);
+            if a <= b && b <= a {
+                prop_assert_eq!(a, b);
+            }
+        }
+
+        /// Transitivity: if `a ≤ b` and `b ≤ c` then `a ≤ c`.
+        #[test]
+        fn prop_product_order_transitive(
+            x1 in any::<u64>(), y1 in any::<u64>(),
+            x2 in any::<u64>(), y2 in any::<u64>(),
+            x3 in any::<u64>(), y3 in any::<u64>()
+        ) {
+            let a = ProductTimestamp::new(x1, y1);
+            let b = ProductTimestamp::new(x2, y2);
+            let c = ProductTimestamp::new(x3, y3);
+            if a <= b && b <= c {
+                prop_assert!(a <= c);
+            }
+        }
+
+        // ── ProductTimestamp: Lattice element laws ────────────────────────────
+
+        /// meet is a lower bound: `meet(a,b) ≤ a` and `meet(a,b) ≤ b`.
+        #[test]
+        fn prop_product_meet_is_lower_bound(
+            x1 in any::<u64>(), y1 in any::<u64>(),
+            x2 in any::<u64>(), y2 in any::<u64>()
+        ) {
+            let a = ProductTimestamp::new(x1, y1);
+            let b = ProductTimestamp::new(x2, y2);
+            let m = a.meet(&b);
+            prop_assert!(m <= a);
+            prop_assert!(m <= b);
+        }
+
+        /// join is an upper bound: `a ≤ join(a,b)` and `b ≤ join(a,b)`.
+        #[test]
+        fn prop_product_join_is_upper_bound(
+            x1 in any::<u64>(), y1 in any::<u64>(),
+            x2 in any::<u64>(), y2 in any::<u64>()
+        ) {
+            let a = ProductTimestamp::new(x1, y1);
+            let b = ProductTimestamp::new(x2, y2);
+            let j = a.join(&b);
+            prop_assert!(a <= j);
+            prop_assert!(b <= j);
+        }
+
+        /// meet commutativity.
+        #[test]
+        fn prop_product_meet_commutative(
+            x1 in any::<u64>(), y1 in any::<u64>(),
+            x2 in any::<u64>(), y2 in any::<u64>()
+        ) {
+            let a = ProductTimestamp::new(x1, y1);
+            let b = ProductTimestamp::new(x2, y2);
+            prop_assert_eq!(a.meet(&b), b.meet(&a));
+        }
+
+        /// join commutativity.
+        #[test]
+        fn prop_product_join_commutative(
+            x1 in any::<u64>(), y1 in any::<u64>(),
+            x2 in any::<u64>(), y2 in any::<u64>()
+        ) {
+            let a = ProductTimestamp::new(x1, y1);
+            let b = ProductTimestamp::new(x2, y2);
+            prop_assert_eq!(a.join(&b), b.join(&a));
+        }
+
+        // ── Antichain<ProductTimestamp>: invariant ────────────────────────────
+
+        #[test]
+        fn prop_antichain_invariant_product(
+            elems in prop::collection::vec((any::<u64>(), any::<u64>()), 0..20)
+        ) {
+            let mut a = Antichain::<ProductTimestamp<u64, u64>>::empty();
+            for (x, y) in elems { a.insert(ProductTimestamp::new(x, y)); }
+            prop_assert!(antichain_valid(&a));
+        }
+
+        // ── Frontier<ProductTimestamp>: meet laws ─────────────────────────────
+
+        #[test]
+        fn prop_frontier_product_meet_commutative(
+            a in arb_frontier_product(), b in arb_frontier_product()
+        ) {
+            prop_assert_eq!(a.meet(&b), b.meet(&a));
+        }
+
+        #[test]
+        fn prop_frontier_product_meet_associative(
+            a in arb_frontier_product(), b in arb_frontier_product(), c in arb_frontier_product()
+        ) {
+            prop_assert_eq!(a.meet(&b.meet(&c)), a.meet(&b).meet(&c));
+        }
+
+        #[test]
+        fn prop_frontier_product_meet_idempotent(a in arb_frontier_product()) {
+            prop_assert_eq!(a.meet(&a), a);
+        }
+
+        // ── Frontier<ProductTimestamp>: join laws ─────────────────────────────
+
+        #[test]
+        fn prop_frontier_product_join_commutative(
+            a in arb_frontier_product(), b in arb_frontier_product()
+        ) {
+            prop_assert_eq!(a.join(&b), b.join(&a));
+        }
+
+        #[test]
+        fn prop_frontier_product_join_idempotent(a in arb_frontier_product()) {
+            prop_assert_eq!(a.join(&a), a);
+        }
+
+        // ── Lexicographic: order and Lattice laws ─────────────────────────────
+
+        /// meet is a lower bound under lexicographic order.
+        #[test]
+        fn prop_lexico_meet_is_lower_bound(
+            a1 in any::<u64>(), b1 in any::<u64>(),
+            a2 in any::<u64>(), b2 in any::<u64>()
+        ) {
+            let p = Lexicographic::new(a1, b1);
+            let q = Lexicographic::new(a2, b2);
+            let m = p.meet(&q);
+            prop_assert!(m <= p);
+            prop_assert!(m <= q);
+        }
+
+        /// join is an upper bound under lexicographic order.
+        #[test]
+        fn prop_lexico_join_is_upper_bound(
+            a1 in any::<u64>(), b1 in any::<u64>(),
+            a2 in any::<u64>(), b2 in any::<u64>()
+        ) {
+            let p = Lexicographic::new(a1, b1);
+            let q = Lexicographic::new(a2, b2);
+            let j = p.join(&q);
+            prop_assert!(p <= j);
+            prop_assert!(q <= j);
+        }
+
+        /// meet commutativity.
+        #[test]
+        fn prop_lexico_meet_commutative(
+            a1 in any::<u64>(), b1 in any::<u64>(),
+            a2 in any::<u64>(), b2 in any::<u64>()
+        ) {
+            let p = Lexicographic::new(a1, b1);
+            let q = Lexicographic::new(a2, b2);
+            prop_assert_eq!(p.meet(&q), q.meet(&p));
+        }
+
+        /// join commutativity.
+        #[test]
+        fn prop_lexico_join_commutative(
+            a1 in any::<u64>(), b1 in any::<u64>(),
+            a2 in any::<u64>(), b2 in any::<u64>()
+        ) {
+            let p = Lexicographic::new(a1, b1);
+            let q = Lexicographic::new(a2, b2);
+            prop_assert_eq!(p.join(&q), q.join(&p));
+        }
+
+        /// meet associativity.
+        #[test]
+        fn prop_lexico_meet_associative(
+            a1 in any::<u64>(), b1 in any::<u64>(),
+            a2 in any::<u64>(), b2 in any::<u64>(),
+            a3 in any::<u64>(), b3 in any::<u64>()
+        ) {
+            let p = Lexicographic::new(a1, b1);
+            let q = Lexicographic::new(a2, b2);
+            let r = Lexicographic::new(a3, b3);
+            prop_assert_eq!(p.meet(&q.meet(&r)), p.meet(&q).meet(&r));
+        }
+
+        /// join associativity.
+        #[test]
+        fn prop_lexico_join_associative(
+            a1 in any::<u64>(), b1 in any::<u64>(),
+            a2 in any::<u64>(), b2 in any::<u64>(),
+            a3 in any::<u64>(), b3 in any::<u64>()
+        ) {
+            let p = Lexicographic::new(a1, b1);
+            let q = Lexicographic::new(a2, b2);
+            let r = Lexicographic::new(a3, b3);
+            prop_assert_eq!(p.join(&q.join(&r)), p.join(&q).join(&r));
         }
     }
 }

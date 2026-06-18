@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc c93257b0d7f1d79fee81e4970e44e8f0489710d9309454dca005e36fc0d228db # shrinks to a = Frontier { antichain: Antichain { elements: [ProductTimestamp { outer: 0, inner: 4170084705088587892 }, ProductTimestamp { outer: 7466358742713898944, inner: 0 }] } }, b = Frontier { antichain: Antichain { elements: [ProductTimestamp { outer: 5583382371280202171, inner: 0 }, ProductTimestamp { outer: 0, inner: 1 }] } }
