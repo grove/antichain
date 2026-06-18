@@ -8,7 +8,7 @@
 
 ```toml
 [dependencies]
-antichain = "0.3"
+antichain = "0.3.1"
 ```
 
 ---
@@ -397,11 +397,11 @@ you can drop into whatever transport and topology you already run.
 
 ```toml
 [dependencies]
-antichain = "0.3"
+antichain = "0.3.1"
 # with serde support:
-# antichain = { version = "0.3", features = ["serde"] }
+# antichain = { version = "0.3.1", features = ["serde"] }
 # in a no_std environment (needs a global allocator):
-# antichain = { version = "0.3", default-features = false }
+# antichain = { version = "0.3.1", default-features = false }
 ```
 
 - **`no_std` friendly.** Disable the default `std` feature; only `alloc` is required (a global

@@ -436,13 +436,13 @@ Add it like any other crate:
 
 ```toml
 [dependencies]
-antichain = "0.3"
+antichain = "0.3.1"
 ```
 
 If you need to serialize frontiers (to send them over the wire or persist them), turn on the
-optional feature: `antichain = { version = "0.3", features = ["serde"] }`. If you're targeting
+optional feature: `antichain = { version = "0.3.1", features = ["serde"] }`. If you're targeting
 an embedded or kernel context without the standard library, disable defaults to get a
-`no_std` build: `antichain = { version = "0.3", default-features = false }`. The core type
+`no_std` build: `antichain = { version = "0.3.1", default-features = false }`. The core type
 pulls in essentially no runtime dependencies, so it won't bloat your dependency tree.
 
 ### 39. What's the smallest useful example?
@@ -951,7 +951,7 @@ document to read before committing.
 
 ### 84. What version is current?
 
-At the time of writing, `antichain` is at `0.3.0` and the companion `antichain-intervals` is
+At the time of writing, `antichain` is at `0.3.1` and the companion `antichain-intervals` is
 at `0.1.0`. The two are versioned independently because they evolve at different rates — the
 core moves more deliberately than the newer intervals crate. For the full version history all
 the way back to `0.1.0`, including what changed in each release and any migration notes,
@@ -973,7 +973,7 @@ crate without licensing surprises.
 
 ### 87. How do I enable serialization?
 
-Turn on the `serde` feature: `antichain = { version = "0.3", features = ["serde"] }`. Once
+Turn on the `serde` feature: `antichain = { version = "0.3.1", features = ["serde"] }`. Once
 enabled, `Antichain` and `Frontier` serialize to a stable, self-describing wire format —
 `{ "elements": [...] }` — so you can ship frontiers over the network or persist them to disk.
 That format is locked down by round-trip tests, which means it won't quietly change shape
